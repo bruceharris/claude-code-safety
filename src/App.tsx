@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react';
 import {
-  BrowserRouter,
+  HashRouter,
   Route,
   Routes,
   Navigate,
@@ -26,13 +26,13 @@ function DeckRoute() {
 
 export function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/decks/:slug" element={<DeckRoute />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
 
