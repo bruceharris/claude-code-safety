@@ -1,0 +1,8 @@
+flowchart TD
+    UI[Untrusted input]
+    PD[Private data]
+    EC[External comms]
+    Agent([Agent])
+    UI -->|carries instructions| Agent
+    PD -->|read into context| Agent
+    Agent -->|sends data out| EC

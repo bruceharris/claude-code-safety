@@ -1,0 +1,12 @@
+flowchart LR
+    subgraph Traditional["Running AI-generated code"]
+        direction LR
+        A1[AI writes code] --> A2[Diff] --> A3{Human review}
+        A3 -->|gate| A4[Run]
+    end
+    subgraph Agentic["Agentic coding"]
+        direction LR
+        B1[Claude reads context] --> B2{Tool-call decision}
+        B2 -->|gate| B3[Tool runs] --> B4[Effect]
+    end
+    Traditional ~~~ Agentic

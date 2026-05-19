@@ -1,0 +1,7 @@
+flowchart LR
+    SF[Source files<br/>incl. CLAUDE.md] --> CTX
+    DEP[Dependencies<br/>node_modules, lockfiles] --> CTX
+    MCP[MCP server responses] --> CTX
+    WEB[Web fetches<br/>WebFetch, curl] --> CTX
+    USR[Your prompts<br/>pasted Slack/Jira/email] --> CTX
+    CTX([Claude's context])
