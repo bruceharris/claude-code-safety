@@ -26,4 +26,5 @@ The `Quiz` component (`src/components/Quiz.tsx`) uses inline styles so it render
   - should be detailed bullets that the speaker will talk through
   - should be content oriented, should not contain instructions to the speaker
 - audience facing slide content should be diagrams and/or very short bullets to anchor the oral content
+- when creating new decks, text should match the authoring style of the text in 1-threat-model.md
 - speaker will be looking at the notes, not the slides, so it's fine to duplicate the slide bullets on the speaker notes, and to nest speaker-only bullets under the bullets that also appear on the slides

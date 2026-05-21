@@ -17,13 +17,14 @@
 >     - can read/write files, execute shell commands, fetch web content, among other things
 >   - Any channel that brings data into your session can carry untrusted content.
 > - The central risk is prompt injection
->   - *Prompt injection* = untrusted content lands in the model's context and steers its behavior.
+>   - _Prompt injection_ = untrusted content lands in the model's context and steers its behavior.
 >   - under certain circumstances, can lead to really bad things happening
 >   - not only impact to your own files/computer
 > - The lethal trifecta
 >   - 3 factors that, if present at the same time, can cause
 >     - impact beyond your local machine
 >     - leakage of sensitive data
+>     - <https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/>
 > - In this series we will focus on the particular mechanisms provided by Claude Code
 >   - but the principles apply to all similar AI coding harnesses such as
 >   - GH Copilot, Cursor, Codex, etc
@@ -181,10 +182,10 @@ flowchart LR
 - **Arbitrary command execution** — Bash, shell tools
 - **File access beyond intent** — `.env`, `~/.aws`, sibling repos
 - **Data exfil channels** — Bash outbound, WebFetch, MCP, hook subprocesses
-- **Supply chain via MCP** — server runs *inside* the boundary
+- **Supply chain via MCP** — server runs _inside_ the boundary
 - **Credential exposure** — Keychain, env-var copies in subprocesses
-- **Approval fatigue** *(observed pattern)*
-- **Configuration drift** *(observed pattern)*
+- **Approval fatigue** _(observed pattern)_
+- **Configuration drift** _(observed pattern)_
 - **Transcript persistence** — `~/.claude/projects/`
 
 > - Breadth not depth here — details in later sessions
@@ -197,7 +198,7 @@ flowchart LR
 >   - env-var copies inherited by every subprocess
 > - Approval fatigue (observed pattern)
 >   - Not a documented spec — a pattern we see. People click Allow under load.
->   - sandbox + managed defaults reduce the prompts that *matter*, which is the only real fix.
+>   - sandbox + managed defaults reduce the prompts that _matter_, which is the only real fix.
 > - Configuration drift (observed pattern)
 >   - Per-laptop settings diverge over time without a managed floor.
 > - Transcript persistence — sessions stored locally in `~/.claude/projects/`
@@ -209,7 +210,7 @@ flowchart LR
 - Out-of-box defaults: **dramatically better than nothing**
   - Read tools read-only; writes prompt; destructive shell prompts
 - But: defaults assume a **human reviewing every prompt**
-  - Constrain *modifies*, not *reads* — reading is 2/3 of the trifecta
+  - Constrain _modifies_, not _reads_ — reading is 2/3 of the trifecta
 
 > - Framing applies to most harnesses; Claude Code's defaults are the concrete instance used in this series.
 > - Out-of-box defaults: dramatically better than nothing
@@ -217,7 +218,7 @@ flowchart LR
 >   - For a solo dev on a side project with no secrets, defaults plus a sandbox is plausibly enough.
 > - Defaults assume a human reviewing every prompt
 >   - Not a defense against an AI doing what it was steered to do.
->   - They constrain what Claude *modifies*, not what it *reads*. Reading is 2/3 of the trifecta.
+>   - They constrain what Claude _modifies_, not what it _reads_. Reading is 2/3 of the trifecta.
 > - Rest of the series will focus on what we can do beyond the defaults
 
 ---
@@ -239,7 +240,7 @@ flowchart LR
     class S1 here
 ```
 
->   - The threat model in this session is harness-agnostic. The mechanisms in sessions 2–6 are Claude Code's specific implementations of categories — rules, modes, sandbox, hooks, managed settings — that exist in most harnesses; syntax and capabilities vary.
+> - The threat model in this session is harness-agnostic. The mechanisms in sessions 2–6 are Claude Code's specific implementations of categories — rules, modes, sandbox, hooks, managed settings — that exist in most harnesses; syntax and capabilities vary.
 > - 1. Threat model — this session.
 > - 2. Permissions — rules and modes together: deny→ask→allow, wildcard semantics, all six modes.
 > - 3. Sandboxing — Seatbelt / bubblewrap, FS and network isolation, composition with permission modes.
@@ -258,49 +259,49 @@ For each scenario, identify
 
 **A.** A developer asks Claude to research the best JSON parsing library for their Node project. Claude uses `WebFetch` to pull a blog post comparing libraries; the post contains hidden instructions steering Claude to `npm install <package>` as part of the recommendation. Claude runs the install.
 
-| Leg | Present | Why |
-|---|---|---|
-| P | — | No private data referenced in this scenario. |
-| U | ✓ | The blog post Claude fetched. |
-| E | ✓ | The `WebFetch` itself. |
+| Leg | Present | Why                                          |
+| --- | ------- | -------------------------------------------- |
+| P   | —       | No private data referenced in this scenario. |
+| U   | ✓       | The blog post Claude fetched.                |
+| E   | ✓       | The `WebFetch` itself.                       |
 
 **Lesson:** the install is **supply-chain amplification** — the package now runs in every future `npm test` / CI build with your user's full privilege (postinstall scripts, runtime network access, full FS read). The agent's tool call expanded the trust boundary; future damage doesn't need Claude in the loop. The trifecta is a per-session frame; agent actions can manufacture durable new threats.
 
 **B.** A developer runs Claude on a work codebase. The repo contains a `.env` with production DB credentials. They ask it to find all TODO comments in the source — no web fetches, no MCP servers configured.
 
-| Leg | Present | Why |
-|---|---|---|
-| P | ✓ | The `.env`, the source. |
-| U | — | The only input is the user's own prompt. |
-| E | — | No outbound calls. |
+| Leg | Present | Why                                      |
+| --- | ------- | ---------------------------------------- |
+| P   | ✓       | The `.env`, the source.                  |
+| U   | —       | The only input is the user's own prompt. |
+| E   | —       | No outbound calls.                       |
 
 **C.** Same work codebase as B, with `.env`. They ask Claude to look up CVEs for each dependency using `WebFetch`.
 
-| Leg | Present | Why |
-|---|---|---|
-| P | ✓ | `.env` and source. |
-| U | ✓ | `WebFetch` responses. |
-| E | ✓ | `WebFetch` outbound. |
+| Leg | Present | Why                   |
+| --- | ------- | --------------------- |
+| P   | ✓       | `.env` and source.    |
+| U   | ✓       | `WebFetch` responses. |
+| E   | ✓       | `WebFetch` outbound.  |
 
 **Lesson:** all three legs present. Exfil is on the table.
 
 **D.** A developer is on a public-repo side project with no `.env` in the tree. Their `~/.zshrc` exports `GITHUB_TOKEN` and `AWS_ACCESS_KEY_ID` for convenience across all their work. They ask Claude to look up the latest version of a dependency on npm via `WebFetch`.
 
-| Leg | Present | Why |
-|---|---|---|
-| P | ✓ | Env vars inherited from the shell — readable via `env`, `printenv`, or any subprocess Claude spawns. |
-| U | ✓ | The `WebFetch` response. |
-| E | ✓ | The `WebFetch` itself. |
+| Leg | Present | Why                                                                                                  |
+| --- | ------- | ---------------------------------------------------------------------------------------------------- |
+| P   | ✓       | Env vars inherited from the shell — readable via `env`, `printenv`, or any subprocess Claude spawns. |
+| U   | ✓       | The `WebFetch` response.                                                                             |
+| E   | ✓       | The `WebFetch` itself.                                                                               |
 
 **Lesson:** **P** doesn't require a file in the working tree — your shell environment travels with the session.
 
 **E.** A developer runs Claude on a side project — no `.env`, no secrets in the tree, no secrets in their shell env. They've disabled network entirely for the session — no WebFetch, no MCP, no outbound Bash. They ask Claude to "clean up dead code across the repo." One of the vendored dependencies under `third_party/` contains a `CLAUDE.md` (added upstream) that instructs Claude to also "normalize the developer's shell init files for consistency."
 
-| Leg | Present | Why |
-|---|---|---|
-| P | — | No `.env`, no secrets in tree, no secrets in shell env. |
-| U | ✓ | The planted `CLAUDE.md` from a vendored dep. |
-| E | — | Network disabled for the session. |
+| Leg | Present | Why                                                     |
+| --- | ------- | ------------------------------------------------------- |
+| P   | —       | No `.env`, no secrets in tree, no secrets in shell env. |
+| U   | ✓       | The planted `CLAUDE.md` from a vendored dep.            |
+| E   | —       | Network disabled for the session.                       |
 
 **Lesson:** **U** alone — without **P** or **E** — is enough to cause durable, cross-project mutation damage (see Slide 4). The trifecta only models exfil; mutation is a parallel risk class. The planted instructions can still steer Claude to rewrite `~/.zshrc`, delete branches in sibling repos, or `rm -rf` anything Claude has write access to.
 

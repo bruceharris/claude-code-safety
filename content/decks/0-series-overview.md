@@ -110,6 +110,7 @@ The shift in perspective most relevant for anyone with team or platform responsi
 
 Topics:
 - Settings precedence: managed → command line → local project → shared project → user
+- **Important wrinkle to surface here**: the 5-level precedence ordering is largely descriptive for *permission rules*, because the docs explicitly say rules "merge across scopes rather than override" (https://code.claude.com/docs/en/settings — Settings precedence section). For `allow`/`ask`/`deny` lists, the deny→ask→allow eval order does the real work of resolving cross-scope conflicts within the merged set, not the precedence ordering. Where precedence has actual teeth for permission rules is the "only" toggles below and the "deny anywhere wins" rule. Worth calling out so the audience doesn't walk away thinking "managed allow > user allow" in a way that isn't actually how it works. (Surfaced during Session 2 prep when verifying slide 4's precedence claim against docs.)
 - Managed settings as the only scope that can enforce a baseline
 - The "only" toggles: `allowManagedPermissionRulesOnly`, `allowManagedHooksOnly`, `allowManagedMcpServersOnly`, `allowManagedReadPathsOnly`, `allowManagedDomainsOnly`
 - `disableBypassPermissionsMode` and `disableAutoMode` for removing the modes you don't want anyone using
