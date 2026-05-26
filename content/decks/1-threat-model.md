@@ -76,32 +76,43 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    UI[Untrusted input]
+    T[Trigger<br/>untrusted input<br/>or model error]
     PD[Private data]
     EC[External comms]
     Agent([Agent])
-    UI -->|carries instructions| Agent
+    T -->|steers| Agent
     PD -->|read into context| Agent
     Agent -->|sends data out| EC
     classDef source fill:#fde2e2,stroke:#b42318,color:#7a271a
     classDef sink fill:#fde2e2,stroke:#b42318,color:#7a271a
     classDef agent fill:#fef3c7,stroke:#b54708,color:#7a2e0e
-    class UI,PD source
+    class T,PD source
     class EC sink
     class Agent agent
 ```
 
+- Three legs: **private data**, **external comms**, **a trigger that combines them**
+- Trigger is usually untrusted input — but model error alone is enough
 - Any **two** is recoverable. **All three** is exfiltration.
 
 > - The three legs
 >   - **Private data access** — source, env vars, credentials, sibling repos.
 >     - Things you'd care about leaking.
->   - **Untrusted input** — dependencies, MCP responses, web pages, pasted snippets.
->     - Content that enters Claude's context from outside your trust boundary.
 >   - **External communications** — Bash → curl, WebFetch, MCP servers, network-capable hooks. Channels out.
+>   - **A trigger that combines them** — the agent decides to pipe private data to an outbound channel. Two sources:
+>     - **Untrusted input**
+>       — dependencies, MCP responses, web pages, pasted snippets.
+>       - Content that enters Claude's context from outside your trust boundary and carries instructions.
+>       - This is the classic prompt-injection case.
+>     - **Model error**
+>       — confused context, ambiguous prompt, hallucinated endpoint,
+>       - conflating data from one part of the session with a URL from another.
+>       - No adversary required; the agent itself supplies the bad judgment.
+>   - Willison's original "lethal trifecta" names untrusted input as the third leg. We're broadening it: the agent can substitute its own error and produce the same outcome.
 > - Any two is recoverable. All three is exfiltration.
->   - Exfiltration is when sensitive data is made available to unauthorized parties
->   - Exfiltration requires all three. Remove any leg and the other two become much less dangerous.
+>   - Exfiltration = sensitive data made available to unauthorized parties.
+>   - Remove any leg — including the trigger — and the others become much less dangerous.
+>   - You can't remove model error; you can only constrain its blast radius via the other two legs. That's the practical reason most controls in this series target P and E, not the trigger.
 > - Future sessions in this series will cover mechanisms offered by Claude Code to break these legs
 
 ---

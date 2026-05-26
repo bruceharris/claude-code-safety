@@ -17,11 +17,11 @@ import { minimalTheme } from "../../theme";
 const ulStyle = { paddingInlineStart: "1.5em", margin: "0.25em 0" } as const;
 
 const diagramSquare = {
-  maxWidth: "45%",
-  maxHeight: "50%",
+  maxWidth: "38%",
+  maxHeight: "38%",
   width: "auto",
   height: "auto",
-  margin: "0.5rem 0",
+  margin: "0.25rem 0",
 } as const;
 
 const diagramExtraWide = {
@@ -51,7 +51,17 @@ export default function ThreatModelDeck() {
             Why agentic coding is different from running AI generated code
           </ListItem>
           <ListItem>Prompt injection</ListItem>
-          <ListItem>The "lethal trifecta"</ListItem>
+          <ListItem>
+            The "
+            <a
+              href="https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              lethal trifecta
+            </a>
+            "
+          </ListItem>
           <ListItem>
             Focus on Claude Code — principles apply to all AI coding harnesses
           </ListItem>
@@ -213,10 +223,19 @@ export default function ThreatModelDeck() {
           <Heading fontSize="h3">The lethal trifecta</Heading>
           <img
             src={trifectaSvg}
-            alt="The lethal trifecta: untrusted input and private data flow into the agent; the agent sends data out via external comms."
+            alt="The lethal trifecta: a trigger (untrusted input or model error) and private data flow into the agent; the agent sends data out via external comms."
             style={diagramSquare}
           />
           <UnorderedList>
+            <ListItem>
+              Three legs: <strong>private data</strong>,{" "}
+              <strong>external comms</strong>,{" "}
+              <strong>a trigger that combines them</strong>
+            </ListItem>
+            <ListItem>
+              Trigger is usually untrusted input — but model error alone is
+              enough
+            </ListItem>
             <ListItem>
               Any <strong>two</strong> is recoverable.{" "}
               <strong>All three</strong> is exfiltration.
@@ -236,18 +255,34 @@ export default function ThreatModelDeck() {
                   </ul>
                 </li>
                 <li>
-                  <strong>Untrusted input</strong> — dependencies, MCP
-                  responses, web pages, pasted snippets.
+                  <strong>External communications</strong> — Bash → curl,
+                  WebFetch, MCP servers, network-capable hooks. Channels out.
+                </li>
+                <li>
+                  <strong>A trigger that combines them</strong> — the agent
+                  decides to pipe private data to an outbound channel. Two
+                  sources:
                   <ul style={ulStyle}>
                     <li>
-                      Content that enters Claude's context from outside your
-                      trust boundary.
+                      <strong>Untrusted input</strong> — dependencies, MCP
+                      responses, web pages, pasted snippets. Content that
+                      enters Claude's context from outside your trust boundary
+                      and carries instructions. This is the classic
+                      prompt-injection case.
+                    </li>
+                    <li>
+                      <strong>Model error</strong> — confused context,
+                      ambiguous prompt, hallucinated endpoint, conflating data
+                      from one part of the session with a URL from another. No
+                      adversary required; the agent itself supplies the bad
+                      judgment.
                     </li>
                   </ul>
                 </li>
                 <li>
-                  <strong>External communications</strong> — Bash → curl,
-                  WebFetch, MCP servers, network-capable hooks. Channels out.
+                  Willison's original "lethal trifecta" names untrusted input
+                  as the third leg. We're broadening it: the agent can
+                  substitute its own error and produce the same outcome.
                 </li>
               </ul>
             </li>
@@ -255,12 +290,18 @@ export default function ThreatModelDeck() {
               Any two is recoverable. All three is exfiltration.
               <ul style={ulStyle}>
                 <li>
-                  Exfiltration is when sensitive data is made available to
-                  unauthorized parties.
+                  Exfiltration = sensitive data made available to unauthorized
+                  parties.
                 </li>
                 <li>
-                  Exfiltration requires all three. Remove any leg and the other
-                  two become much less dangerous.
+                  Remove any leg — including the trigger — and the others
+                  become much less dangerous.
+                </li>
+                <li>
+                  You can't remove model error; you can only constrain its
+                  blast radius via the other two legs. That's the practical
+                  reason most controls in this series target P and E, not the
+                  trigger.
                 </li>
               </ul>
             </li>
