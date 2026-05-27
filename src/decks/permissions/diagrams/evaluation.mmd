@@ -1,0 +1,8 @@
+flowchart LR
+    Call([Tool call]) --> Deny{deny matches?}
+    Deny -->|yes| X[Blocked]
+    Deny -->|no| Ask{ask matches?}
+    Ask -->|yes| P[Prompt]
+    Ask -->|no| Allow{allow matches?}
+    Allow -->|yes| Y[Allowed]
+    Allow -->|no| Mode[Mode default]

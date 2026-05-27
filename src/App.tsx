@@ -11,6 +11,7 @@ import { decks } from './decks';
 
 const deckLoaders: Record<string, ReturnType<typeof lazy>> = {
   'threat-model': lazy(() => import('./decks/threat-model')),
+  permissions: lazy(() => import('./decks/permissions')),
 };
 
 function DeckRoute() {

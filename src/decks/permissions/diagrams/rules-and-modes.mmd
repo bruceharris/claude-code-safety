@@ -1,0 +1,5 @@
+flowchart LR
+    Call([Tool call]) --> Rules{Rule matches?}
+    Rules -->|yes| Outcome1[Deny / Ask / Allow]
+    Rules -->|no| Mode[Mode's default behavior]
+    Mode --> Outcome2[Prompt / auto-approve / auto-deny]

